@@ -19,7 +19,7 @@
         <!-- Header -->
         <header class="mb-8 text-center">
             <h1 class="text-3xl font-bold text-gray-800">📊 팀 예산 관리 시스템</h1>
-            <p class="text-gray-500 mt-2">월별 예산 취합 및 대시보드</p>
+            <p class="text-gray-500 mt-2">부장님 보고용 월별 예산 취합 및 대시보드</p>
         </header>
 
         <!-- Navigation Tabs -->
@@ -62,7 +62,7 @@
                         <label class="block text-sm font-medium text-gray-700">사용 금액 (원)</label>
                         <input type="number" id="amount" placeholder="숫자만 입력" class="mt-1 block w-full rounded-md border-gray-300 border p-2 focus:ring-blue-500 focus:border-blue-500" required>
                     </div>
-                    <button type="submit" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
+                    <button type="submit" id="submitBtn" class="w-full bg-blue-600 text-white font-bold py-2 px-4 rounded-md hover:bg-blue-700 transition-colors">
                         기록 저장하기
                     </button>
                 </form>
@@ -71,7 +71,7 @@
             <div class="md:col-span-2 card p-6">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-xl font-bold">📂 최근 입력 내역</h2>
-                    <button onclick="clearData()" class="text-xs text-red-500 hover:underline">모든 데이터 초기화</button>
+                    <button onclick="clearData()" id="clearBtn" class="text-xs text-red-500 hover:underline">모든 데이터 초기화</button>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
@@ -92,10 +92,10 @@
             </div>
         </div>
 
-        <!-- Section 2: Dashboard (Hidden by default) -->
+        <!-- Section 2: Dashboard -->
         <div id="section-dashboard" class="hidden space-y-8">
             
-            <!-- AI 요약 카드 추가 -->
+            <!-- AI 요약 카드 -->
             <div class="card p-6 bg-indigo-50 border border-indigo-100">
                 <div class="flex justify-between items-center mb-3">
                     <h2 class="text-lg font-bold text-indigo-900 flex items-center">
@@ -156,7 +156,7 @@
         </div>
     </div>
 
-    <!-- Alert Modal Replacement -->
+    <!-- Alert Modal -->
     <div id="customAlert" class="fixed inset-0 bg-black bg-opacity-50 hidden flex items-center justify-center z-50">
         <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-4">
             <h3 class="text-lg font-bold mb-2" id="alertTitle">알림</h3>
@@ -169,12 +169,12 @@
         // 🚨 배포한 구글 앱스 스크립트 웹앱 URL
         const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzIQiSIFQS6I-UIayDRUavVHkDSFfQr1_Ua5-oqLAp57LBDuQx6RhmPNlnSRv1f5ARg/exec";
 
-        // State Management
-        let budgetData = JSON.parse(localStorage.getItem('teamBudgetData')) || [];
+        // 로컬 스토리지 사용 코드를 완전히 제거하고 빈 배열로 초기화합니다.
+        let budgetData = []; 
         let categoryChart = null;
         let memberChart = null;
 
-        // Tab Switching
+        // 탭 전환
         function switchTab(tab) {
             const sections = ['input', 'dashboard'];
             sections.forEach(s => {
@@ -189,12 +189,11 @@
             if(tab === 'dashboard') updateDashboard();
         }
 
-        // Form Submission (수정됨: 스프레드시트로 fetch 전송 추가)
+        // 1. 데이터 저장 (스프레드시트로 전송)
         document.getElementById('budgetForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
-            // 버튼 비활성화 및 로딩 상태 표시 (중복 클릭 방지)
-            const submitBtn = this.querySelector('button[type="submit"]');
+            const submitBtn = document.getElementById('submitBtn');
             const originalBtnText = submitBtn.innerText;
             submitBtn.innerText = "기록 저장 중...";
             submitBtn.disabled = true;
@@ -208,7 +207,6 @@
             };
 
             try {
-                // 1. 앱스스크립트로 데이터 전송
                 const response = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -225,12 +223,15 @@
                 const result = await response.json();
 
                 if(result.status === 'success') {
-                    // 2. 서버 전송 성공 시 화면(로컬) 업데이트
-                    budgetData.unshift(entry);
-                    saveData();
+                    // 서버 전송 성공 시 화면(배열) 업데이트
+                    budgetData.unshift(entry); 
                     renderHistory();
                     this.reset();
                     showAlert('성공', '예산 데이터가 스프레드시트에 정상적으로 기록되었습니다.');
+                    
+                    // 해당 월로 다시 초기화
+                    const now = new Date();
+                    document.getElementById('month').value = now.toISOString().substring(0, 7);
                 } else {
                     throw new Error(result.message);
                 }
@@ -238,30 +239,74 @@
                 console.error("저장 오류:", error);
                 showAlert('오류', '스프레드시트 저장 중 문제가 발생했습니다: ' + error.message);
             } finally {
-                // 버튼 상태 복구
                 submitBtn.innerText = originalBtnText;
                 submitBtn.disabled = false;
             }
         });
 
-        function saveData() {
-            localStorage.setItem('teamBudgetData', JSON.stringify(budgetData));
-        }
-
-        function deleteEntry(id) {
-            budgetData = budgetData.filter(item => item.id !== id);
-            saveData();
-            renderHistory();
-        }
-
-        function clearData() {
-            if(confirm('정말로 모든 데이터를 삭제하시겠습니까? (이 작업은 되돌릴 수 없습니다.)')) {
-                budgetData = [];
-                saveData();
-                renderHistory();
+        // 2. 개별 데이터 삭제 (스프레드시트에 삭제 요청)
+        async function deleteEntry(id) {
+            if(!confirm('이 항목을 삭제하시겠습니까?')) return;
+            
+            try {
+                const response = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        'action': 'delete',
+                        'id': id
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    // 시트 삭제 성공 후 화면 배열 업데이트
+                    budgetData = budgetData.filter(item => item.id.toString() !== id.toString());
+                    renderHistory();
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error("삭제 오류:", error);
+                showAlert('오류', '스프레드시트에서 데이터를 삭제하지 못했습니다.');
             }
         }
 
+        // 3. 모든 데이터 초기화 (스프레드시트에 전체 삭제 요청)
+        async function clearData() {
+            if(!confirm('정말로 모든 데이터를 삭제하시겠습니까? (스프레드시트 데이터도 모두 삭제됩니다.)')) return;
+
+            const clearBtn = document.getElementById('clearBtn');
+            clearBtn.innerText = "초기화 중...";
+            
+            try {
+                const response = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        'action': 'clearAll'
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    budgetData = [];
+                    renderHistory();
+                    showAlert('성공', '스프레드시트의 모든 데이터가 삭제되었습니다.');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error("초기화 오류:", error);
+                showAlert('오류', '스프레드시트 초기화 중 문제가 발생했습니다.');
+            } finally {
+                clearBtn.innerText = "모든 데이터 초기화";
+            }
+        }
+
+        // 내역 렌더링
         function renderHistory() {
             const body = document.getElementById('historyBody');
             body.innerHTML = budgetData.map(item => `
@@ -287,21 +332,21 @@
             }
         }
 
+        // 대시보드 업데이트
         function updateDashboard() {
-            const total = budgetData.reduce((acc, curr) => acc + curr.amount, 0);
+            // ... (기존 대시보드 통계 로직과 동일) ...
+            const total = budgetData.reduce((acc, curr) => acc + parseInt(curr.amount || 0), 0);
             document.getElementById('stat-total').innerText = total.toLocaleString() + '원';
             document.getElementById('stat-count').innerText = budgetData.length + '건';
 
-            // Category aggregation
             const catMap = budgetData.reduce((acc, curr) => {
-                acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+                acc[curr.category] = (acc[curr.category] || 0) + parseInt(curr.amount || 0);
                 return acc;
             }, {});
             
             const topCategory = Object.keys(catMap).reduce((a, b) => catMap[a] > catMap[b] ? a : b, '-');
             document.getElementById('stat-top-category').innerText = topCategory !== '-' ? `${topCategory} (${catMap[topCategory].toLocaleString()}원)` : '-';
 
-            // Charts
             renderCharts(catMap);
             renderSummaryTable();
         }
@@ -310,11 +355,9 @@
             const catCtx = document.getElementById('categoryChart').getContext('2d');
             const memCtx = document.getElementById('memberChart').getContext('2d');
 
-            // Destroy existing charts if they exist
             if(categoryChart) categoryChart.destroy();
             if(memberChart) memberChart.destroy();
 
-            // Category Chart (Doughnut)
             categoryChart = new Chart(catCtx, {
                 type: 'doughnut',
                 data: {
@@ -328,9 +371,8 @@
                 options: { responsive: true, cutout: '70%' }
             });
 
-            // Member Chart (Bar)
             const memMap = budgetData.reduce((acc, curr) => {
-                acc[curr.member] = (acc[curr.member] || 0) + curr.amount;
+                acc[curr.member] = (acc[curr.member] || 0) + parseInt(curr.amount || 0);
                 return acc;
             }, {});
 
@@ -355,16 +397,15 @@
             const tableBody = document.getElementById('summaryTableBody');
             const monthlyData = {};
 
-            // Grouping data by month and category
             budgetData.forEach(item => {
                 if(!monthlyData[item.month]) {
                     monthlyData[item.month] = { '수선유지비': 0, '비품': 0, '개량공사': 0, total: 0 };
                 }
-                monthlyData[item.month][item.category] += item.amount;
-                monthlyData[item.month].total += item.amount;
+                const amt = parseInt(item.amount || 0);
+                monthlyData[item.month][item.category] += amt;
+                monthlyData[item.month].total += amt;
             });
 
-            // Sorting months descending
             const sortedMonths = Object.keys(monthlyData).sort((a, b) => b.localeCompare(a));
 
             tableBody.innerHTML = sortedMonths.map(month => {
@@ -385,14 +426,12 @@
             }
         }
 
-        // 프록시(앱스 스크립트)를 통해 안전하게 API를 호출하는 함수
+        // AI 요약용 API 호출 프록시
         async function mygemini(prompt) {
             try {
                 const response = await fetch(APPS_SCRIPT_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: new URLSearchParams({
                         'action': 'gemini',
                         'prompt': prompt
@@ -410,13 +449,8 @@
             }
         }
 
-        // 요약 생성 버튼 클릭 시 실행되는 함수
+        // 요약 생성
         async function generateSummary() {
-            if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes("여기에_")) {
-                showAlert("알림", "앱스 스크립트 URL이 설정되지 않았습니다. HTML 코드 하단에서 APPS_SCRIPT_URL을 입력해주세요.");
-                return;
-            }
-
             if (budgetData.length === 0) {
                 showAlert("알림", "분석할 예산 데이터가 없습니다. 데이터를 먼저 입력해주세요.");
                 return;
@@ -425,20 +459,16 @@
             const summaryTextEl = document.getElementById('ai-summary-text');
             summaryTextEl.innerHTML = `<span class="text-blue-500 animate-pulse font-semibold">AI가 데이터를 분석 중입니다... 잠시만 기다려주세요 ⏳</span>`;
 
-            // 데이터를 프롬프트용 텍스트로 변환
             const textData = budgetData.map(item => `[${item.month}] ${item.member} - ${item.category} : ${item.amount}원`).join("\n");
             
             const systemPrompt = "다음은 우리 팀의 월별 예산 사용 내역 데이터입니다. 이 데이터를 분석하여 가장 두드러지는 특징, 가장 지출이 큰 항목이나 사람 등을 파악하고, 전체 예산 사용 흐름을 반드시 '한 줄'로 요약해주세요.\n\n데이터:\n";
             const finalPrompt = systemPrompt + textData;
 
-            // mygemini 함수 호출
             const result = await mygemini(finalPrompt);
-            
-            // 결과 출력
             summaryTextEl.innerText = result;
         }
 
-        // Custom Alert Controls
+        // 모달 알림창 제어
         function showAlert(title, msg) {
             document.getElementById('alertTitle').innerText = title;
             document.getElementById('alertMsg').innerText = msg;
@@ -449,13 +479,27 @@
             document.getElementById('customAlert').classList.add('hidden');
         }
 
-        // Initial Load
-        window.onload = function() {
-            // Set current month as default
+        // 초기 구동 (스프레드시트에서 데이터 Fetching)
+        window.onload = async function() {
             const now = new Date();
-            const monthStr = now.toISOString().substring(0, 7);
-            document.getElementById('month').value = monthStr;
-            renderHistory();
+            document.getElementById('month').value = now.toISOString().substring(0, 7);
+
+            try {
+                document.getElementById('historyBody').innerHTML = `<tr><td colspan="5" class="py-10 text-center text-blue-500 font-bold animate-pulse">스프레드시트에서 데이터를 불러오는 중입니다... ⏳</td></tr>`;
+                
+                const response = await fetch(APPS_SCRIPT_URL + "?action=read");
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    budgetData = result.data;
+                    renderHistory(); 
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error("데이터 로드 실패:", error);
+                document.getElementById('historyBody').innerHTML = `<tr><td colspan="5" class="py-10 text-center text-red-500 font-bold">스프레드시트와 연결할 수 없습니다. URL을 확인해주세요.</td></tr>`;
+            }
         }
     </script>
 </body>
