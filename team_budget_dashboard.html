@@ -19,7 +19,7 @@
         <!-- Header -->
         <header class="mb-8 text-center">
             <h1 class="text-3xl font-bold text-gray-800">📊 팀 예산 관리 시스템</h1>
-            <p class="text-gray-500 mt-2">부장님 보고용 월별 예산 취합 및 대시보드</p>
+            <p class="text-gray-500 mt-2">월별 예산 취합 및 대시보드</p>
         </header>
 
         <!-- Navigation Tabs -->
@@ -166,7 +166,7 @@
     </div>
 
     <script>
-        // 🚨 중요: 여기에 배포한 구글 앱스 스크립트 웹앱 URL을 입력하세요! (API 키는 스크립트 쪽에 숨김)
+        // 🚨 배포한 구글 앱스 스크립트 웹앱 URL
         const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx0kDWaey-TRLHwllJWosKB__ze-Bjz-Mxq3LlOSgMEUe_lmOIUCXJW4U-WKIcMcQky/exec";
 
         // State Management
@@ -189,10 +189,16 @@
             if(tab === 'dashboard') updateDashboard();
         }
 
-        // Form Submission
-        document.getElementById('budgetForm').addEventListener('submit', function(e) {
+        // Form Submission (수정됨: 스프레드시트로 fetch 전송 추가)
+        document.getElementById('budgetForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             
+            // 버튼 비활성화 및 로딩 상태 표시 (중복 클릭 방지)
+            const submitBtn = this.querySelector('button[type="submit"]');
+            const originalBtnText = submitBtn.innerText;
+            submitBtn.innerText = "기록 저장 중...";
+            submitBtn.disabled = true;
+
             const entry = {
                 id: Date.now(),
                 member: document.getElementById('member').value,
@@ -201,11 +207,41 @@
                 amount: parseInt(document.getElementById('amount').value)
             };
 
-            budgetData.unshift(entry);
-            saveData();
-            renderHistory();
-            this.reset();
-            showAlert('성공', '예산 데이터가 정상적으로 기록되었습니다.');
+            try {
+                // 1. 앱스스크립트로 데이터 전송
+                const response = await fetch(APPS_SCRIPT_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: new URLSearchParams({
+                        'action': 'insert',
+                        'id': entry.id,
+                        'member': entry.member,
+                        'month': entry.month,
+                        'category': entry.category,
+                        'amount': entry.amount
+                    })
+                });
+
+                const result = await response.json();
+
+                if(result.status === 'success') {
+                    // 2. 서버 전송 성공 시 화면(로컬) 업데이트
+                    budgetData.unshift(entry);
+                    saveData();
+                    renderHistory();
+                    this.reset();
+                    showAlert('성공', '예산 데이터가 스프레드시트에 정상적으로 기록되었습니다.');
+                } else {
+                    throw new Error(result.message);
+                }
+            } catch (error) {
+                console.error("저장 오류:", error);
+                showAlert('오류', '스프레드시트 저장 중 문제가 발생했습니다: ' + error.message);
+            } finally {
+                // 버튼 상태 복구
+                submitBtn.innerText = originalBtnText;
+                submitBtn.disabled = false;
+            }
         });
 
         function saveData() {
@@ -349,7 +385,7 @@
             }
         }
 
-        // 프록시(앱스 스크립트)를 통해 안전하게 API를 호출하는 함수 (키 노출 원천 차단)
+        // 프록시(앱스 스크립트)를 통해 안전하게 API를 호출하는 함수
         async function mygemini(prompt) {
             try {
                 const response = await fetch(APPS_SCRIPT_URL, {
